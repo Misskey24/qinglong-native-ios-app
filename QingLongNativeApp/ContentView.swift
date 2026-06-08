@@ -29,68 +29,39 @@ struct LoginView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("青龙管理")
                         .font(.system(size: 36, weight: .black))
-                    Text("原生 iOS 管理端，登录远程青龙后可管理任务、变量、脚本、依赖、订阅、日志和配置。")
+                    Text("支持多个青龙面板。登录状态会一直保留，直到你手动退出。")
                         .foregroundStyle(.secondary)
 
-                    VStack(spacing: 14) {
-                        Picker("协议", selection: $useHTTPS) {
-                            Text("http://").tag(false)
-                            Text("https://").tag(true)
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: useHTTPS) { enabled in
-                            port = enabled ? "443" : "5700"
-                        }
+                    loginCard
 
-                        TextField("主机或 IP", text: $host)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            .fieldStyle()
-                        TextField("端口", text: $port)
-                            .keyboardType(.numberPad)
-                            .fieldStyle()
-                        TextField("用户名", text: $username)
-                            .textInputAutocapitalization(.never)
-                            .fieldStyle()
-                        SecureField("密码", text: $password)
-                            .fieldStyle()
-
-                        Text(baseURL.absoluteString + "/api")
-                            .font(.footnote)
-                            .foregroundStyle(.green)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                            .background(Color.green.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-
-                        if !client.errorMessage.isEmpty {
-                            Text(client.errorMessage)
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-
-                        Button {
-                            Task {
-                                client.configure(baseURL: baseURL)
-                                await client.login(username: username, password: password)
+                    if !client.accounts.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("已保存面板")
+                                .font(.footnote.bold())
+                                .foregroundStyle(.secondary)
+                            ForEach(client.accounts) { account in
+                                Button {
+                                    Task { await client.switchAccount(account) }
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(account.name).fontWeight(.semibold)
+                                            Text(account.baseURL.absoluteString)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .foregroundStyle(.green)
+                                    }
+                                    .padding(12)
+                                    .background(Color(.secondarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                                }
+                                .buttonStyle(.plain)
                             }
-                        } label: {
-                            HStack {
-                                if client.isLoading { ProgressView().tint(.white) }
-                                Text("登录并读取面板").fontWeight(.bold)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.roundedRectangle(radius: 16))
-                        .disabled(client.isLoading)
                     }
-                    .padding(16)
-                    .background(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                    .shadow(color: .black.opacity(0.06), radius: 18, y: 10)
                 }
                 .padding(18)
             }
@@ -98,6 +69,68 @@ struct LoginView: View {
             .navigationTitle("远程登录")
             .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    private var loginCard: some View {
+        VStack(spacing: 14) {
+            Picker("协议", selection: $useHTTPS) {
+                Text("http://").tag(false)
+                Text("https://").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: useHTTPS) { enabled in
+                port = enabled ? "443" : "5700"
+            }
+
+            TextField("主机或 IP", text: $host)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                .fieldStyle()
+            TextField("端口", text: $port)
+                .keyboardType(.numberPad)
+                .fieldStyle()
+            TextField("用户名", text: $username)
+                .textInputAutocapitalization(.never)
+                .fieldStyle()
+            SecureField("密码", text: $password)
+                .fieldStyle()
+
+            Text(baseURL.absoluteString + "/api")
+                .font(.footnote)
+                .foregroundStyle(.green)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(Color.green.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            if !client.errorMessage.isEmpty {
+                Text(client.errorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button {
+                Task {
+                    client.configure(baseURL: baseURL)
+                    await client.login(username: username, password: password)
+                }
+            } label: {
+                HStack {
+                    if client.isLoading { ProgressView().tint(.white) }
+                    Text("登录并读取面板").fontWeight(.bold)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.roundedRectangle(radius: 16))
+            .disabled(client.isLoading)
+        }
+        .padding(16)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .shadow(color: .black.opacity(0.06), radius: 18, y: 10)
     }
 
     private var baseURL: URL {
@@ -257,6 +290,7 @@ struct EnvListView: View {
 
 struct MoreView: View {
     @EnvironmentObject private var client: QingLongClient
+    @State private var showingAccounts = false
 
     var body: some View {
         NavigationStack {
@@ -264,6 +298,8 @@ struct MoreView: View {
                 Section("连接") {
                     Text(client.baseURL.absoluteString)
                     Button("刷新全部数据") { Task { await client.refreshAll() } }
+                    Button("切换青龙面板") { showingAccounts = true }
+                    Button("退出当前面板", role: .destructive) { client.logoutCurrentAccount() }
                 }
                 Section("管理") {
                     NavigationLink("脚本文件管理") { ScriptListView().environmentObject(client) }
@@ -274,6 +310,51 @@ struct MoreView: View {
                 }
             }
             .navigationTitle("更多")
+            .sheet(isPresented: $showingAccounts) {
+                AccountManagerView().environmentObject(client)
+            }
+        }
+    }
+}
+
+struct AccountManagerView: View {
+    @EnvironmentObject private var client: QingLongClient
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("已保存面板") {
+                    ForEach(client.accounts) { account in
+                        Button {
+                            Task {
+                                await client.switchAccount(account)
+                                dismiss()
+                            }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(account.name).fontWeight(.semibold).foregroundStyle(.primary)
+                                    if client.selectedAccountID == account.id {
+                                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                    }
+                                }
+                                Text(account.baseURL.absoluteString).font(.caption).foregroundStyle(.secondary)
+                                Text(account.username).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        .swipeActions {
+                            Button("删除", role: .destructive) { client.removeAccount(account) }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("面板管理")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
         }
     }
 }
@@ -411,14 +492,12 @@ struct CronEditorView: View {
     }
 
     var body: some View {
-        editorShell(title: item == nil ? "新增任务" : "编辑任务") {
+        editorShell(title: item == nil ? "新增任务" : "编辑任务", cancel: { dismiss() }) {
             Form {
                 TextField("任务名称", text: $name)
                 TextField("命令", text: $command)
                 TextField("定时规则", text: $schedule)
             }
-        } cancel: {
-            dismiss()
         } save: {
             await client.saveCron(CronPayload(id: item?.id, name: name, command: command, schedule: schedule, labels: nil))
             dismiss()
@@ -442,14 +521,12 @@ struct EnvEditorView: View {
     }
 
     var body: some View {
-        editorShell(title: item == nil ? "新增变量" : "编辑变量") {
+        editorShell(title: item == nil ? "新增变量" : "编辑变量", cancel: { dismiss() }) {
             Form {
                 TextField("变量名", text: $name)
                 TextEditor(text: $value).frame(minHeight: 120)
                 TextField("备注", text: $remarks)
             }
-        } cancel: {
-            dismiss()
         } save: {
             await client.saveEnv(EnvPayload(id: item?.id, name: name, value: value, remarks: remarks))
             dismiss()
@@ -473,7 +550,7 @@ struct DependencyEditorView: View {
     }
 
     var body: some View {
-        editorShell(title: item == nil ? "新增依赖" : "编辑依赖") {
+        editorShell(title: item == nil ? "新增依赖" : "编辑依赖", cancel: { dismiss() }) {
             Form {
                 TextField("依赖名称", text: $name)
                 Picker("类型", selection: $type) {
@@ -483,8 +560,6 @@ struct DependencyEditorView: View {
                 }
                 TextField("备注", text: $remarks)
             }
-        } cancel: {
-            dismiss()
         } save: {
             await client.saveDependency(DependencyPayload(id: item?.id, name: name, type: type, remarks: remarks))
             dismiss()
@@ -510,15 +585,13 @@ struct SubscriptionEditorView: View {
     }
 
     var body: some View {
-        editorShell(title: item == nil ? "新增订阅" : "编辑订阅") {
+        editorShell(title: item == nil ? "新增订阅" : "编辑订阅", cancel: { dismiss() }) {
             Form {
                 TextField("订阅名称", text: $name)
                 TextField("仓库链接", text: $url)
                 TextField("分支", text: $branch)
                 TextField("定时规则", text: $schedule)
             }
-        } cancel: {
-            dismiss()
         } save: {
             await client.saveSubscription(SubscriptionPayload(id: item?.id, name: name, url: url, branch: branch, schedule: schedule))
             dismiss()
@@ -532,6 +605,7 @@ struct ScriptEditorView: View {
     let isNew: Bool
     @State private var filename: String
     @State private var content = ""
+    @State private var isLoading = false
 
     init(filename: String, isNew: Bool) {
         self.isNew = isNew
@@ -539,24 +613,58 @@ struct ScriptEditorView: View {
     }
 
     var body: some View {
-        editorShell(title: isNew ? "新增脚本" : "编辑脚本") {
-            Form {
+        NavigationStack {
+            VStack(spacing: 0) {
                 TextField("文件名", text: $filename)
-                TextEditor(text: $content)
+                    .textInputAutocapitalization(.never)
                     .font(.system(.body, design: .monospaced))
-                    .frame(minHeight: 360)
+                    .padding(12)
+                    .background(Color(.secondarySystemBackground))
+
+                if isLoading {
+                    ProgressView("正在加载脚本内容")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    TextEditor(text: $content)
+                        .font(.system(size: 14, design: .monospaced))
+                        .autocorrectionDisabled(true)
+                        .textInputAutocapitalization(.never)
+                        .padding(8)
+                }
+
+                HStack {
+                    Text("\(content.components(separatedBy: .newlines).count) 行")
+                    Spacer()
+                    Text("\(content.count) 字符")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(.secondarySystemBackground))
             }
-            .task {
-                if !isNew {
-                    await client.loadScriptDetail(file: filename)
-                    content = client.scriptContent
+            .navigationTitle(isNew ? "新增脚本" : "编辑脚本")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        Task {
+                            await client.saveScript(filename: filename, path: "", content: content)
+                            dismiss()
+                        }
+                    }
                 }
             }
-        } cancel: {
-            dismiss()
-        } save: {
-            await client.saveScript(filename: filename, path: "", content: content)
-            dismiss()
+            .task {
+                guard !isNew else { return }
+                isLoading = true
+                await client.loadScriptDetail(file: filename)
+                content = client.scriptContent
+                isLoading = false
+            }
         }
     }
 }
@@ -602,7 +710,7 @@ func refreshButton(_ action: @escaping () async -> Void) -> some ToolbarContent 
     }
 }
 
-func editorShell<Content: View>(title: String, @ViewBuilder content: () -> Content, cancel: @escaping () -> Void, save: @escaping () async -> Void) -> some View {
+func editorShell<Content: View>(title: String, cancel: @escaping () -> Void, @ViewBuilder content: () -> Content, save: @escaping () async -> Void) -> some View {
     NavigationStack {
         content()
             .navigationTitle(title)

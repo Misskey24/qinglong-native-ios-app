@@ -1,5 +1,23 @@
 import Foundation
 
+struct PanelAccount: Identifiable, Codable, Equatable {
+    var id: UUID
+    var name: String
+    var baseURL: URL
+    var username: String
+    var token: String
+    var lastLoginAt: Date
+
+    init(id: UUID = UUID(), name: String, baseURL: URL, username: String, token: String, lastLoginAt: Date = Date()) {
+        self.id = id
+        self.name = name
+        self.baseURL = baseURL
+        self.username = username
+        self.token = token
+        self.lastLoginAt = lastLoginAt
+    }
+}
+
 struct CronItem: Identifiable, Codable {
     let id: Int
     let name: String?
@@ -15,9 +33,9 @@ struct CronItem: Identifiable, Codable {
     var title: String { nonEmpty(name) ?? nonEmpty(command) ?? "Task" }
     var subtitle: String { nonEmpty(schedule) ?? nonEmpty(command) ?? "" }
     var statusText: String {
-        if isDisabled == 1 { return "Disabled" }
-        if status == 1 { return "Running" }
-        return "Idle"
+        if isDisabled == 1 { return "已禁用" }
+        if status == 1 { return "运行中" }
+        return "空闲中"
     }
 }
 
@@ -36,7 +54,7 @@ struct EnvItem: Identifiable, Codable {
     let remarks: String?
     let status: Int?
 
-    var title: String { nonEmpty(name) ?? "Variable" }
+    var title: String { nonEmpty(name) ?? "变量" }
     var subtitle: String { nonEmpty(remarks) ?? masked(value) }
     var enabled: Bool { status != 1 }
 }
@@ -51,11 +69,12 @@ struct EnvPayload: Encodable {
 struct ScriptNode: Identifiable, Codable {
     let title: String?
     let key: String?
+    let path: String?
     let type: String?
     let children: [ScriptNode]?
 
-    var id: String { key ?? title ?? UUID().uuidString }
-    var name: String { title ?? key ?? "File" }
+    var id: String { key ?? path ?? title ?? UUID().uuidString }
+    var name: String { title ?? key ?? path ?? "文件" }
     var isDirectory: Bool { type == "directory" || type == "folder" }
 }
 
@@ -67,15 +86,15 @@ struct DependencyItem: Identifiable, Codable {
     let remarks: String?
     let log: String?
 
-    var title: String { nonEmpty(name) ?? "Dependency" }
+    var title: String { nonEmpty(name) ?? "依赖" }
     var subtitle: String { nonEmpty(remarks) ?? (type ?? "") }
     var statusText: String {
         switch status {
-        case 0: return "Queued"
-        case 1: return "Installing"
-        case 2: return "Installed"
-        case 3: return "Failed"
-        default: return "Unknown"
+        case 0: return "队列中"
+        case 1: return "安装中"
+        case 2: return "已安装"
+        case 3: return "安装失败"
+        default: return "未知"
         }
     }
 }
@@ -101,7 +120,7 @@ struct SubscriptionItem: Identifiable, Codable {
         case isDisabled = "is_disabled"
     }
 
-    var title: String { nonEmpty(name) ?? "Subscription" }
+    var title: String { nonEmpty(name) ?? "订阅" }
     var subtitle: String { nonEmpty(url) ?? nonEmpty(schedule) ?? "" }
 }
 
@@ -127,7 +146,7 @@ struct LogNode: Identifiable, Codable {
     let children: [LogNode]?
 
     var id: String { key ?? path ?? title ?? UUID().uuidString }
-    var name: String { title ?? key ?? path ?? "Log" }
+    var name: String { title ?? key ?? path ?? "日志" }
     var isDirectory: Bool { type == "directory" || type == "folder" }
 }
 
@@ -138,7 +157,7 @@ struct ConfigFile: Identifiable, Codable {
     let key: String?
 
     var id: String { key ?? name ?? title ?? UUID().uuidString }
-    var displayName: String { title ?? name ?? value ?? key ?? "Config" }
+    var displayName: String { title ?? name ?? value ?? key ?? "配置" }
 }
 
 struct LoginRequest: Encodable {

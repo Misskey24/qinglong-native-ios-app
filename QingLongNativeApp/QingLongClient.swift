@@ -2,8 +2,14 @@ import Foundation
 
 @MainActor
 final class QingLongClient: ObservableObject {
+    private let accountsKey = "qinglong.saved.accounts"
+    private let selectedAccountKey = "qinglong.selected.account"
+
     @Published var baseURL = URL(string: "http://192.168.1.20:5700")!
     @Published var token = ""
+    @Published var username = ""
+    @Published var accounts: [PanelAccount] = []
+    @Published var selectedAccountID: UUID?
     @Published var crons: [CronItem] = []
     @Published var envs: [EnvItem] = []
     @Published var scripts: [ScriptNode] = []
@@ -17,6 +23,11 @@ final class QingLongClient: ObservableObject {
     @Published var errorMessage = ""
 
     var isLoggedIn: Bool { !token.isEmpty }
+
+    init() {
+        loadAccounts()
+        restoreSelectedAccount()
+    }
 
     func configure(baseURL: URL) {
         self.baseURL = baseURL
@@ -36,9 +47,45 @@ final class QingLongClient: ObservableObject {
                 throw QingLongError.message("No token returned")
             }
             self.token = token
+            self.username = username
+            saveCurrentAccount(username: username, token: token)
             await refreshAll()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func switchAccount(_ account: PanelAccount) async {
+        baseURL = account.baseURL
+        token = account.token
+        username = account.username
+        selectedAccountID = account.id
+        UserDefaults.standard.set(account.id.uuidString, forKey: selectedAccountKey)
+        errorMessage = ""
+        await refreshAll()
+    }
+
+    func logoutCurrentAccount() {
+        guard let selectedAccountID else {
+            token = ""
+            username = ""
+            clearData()
+            return
+        }
+        accounts.removeAll { $0.id == selectedAccountID }
+        saveAccounts()
+        token = ""
+        username = ""
+        self.selectedAccountID = nil
+        UserDefaults.standard.removeObject(forKey: selectedAccountKey)
+        clearData()
+    }
+
+    func removeAccount(_ account: PanelAccount) {
+        accounts.removeAll { $0.id == account.id }
+        saveAccounts()
+        if selectedAccountID == account.id {
+            logoutCurrentAccount()
         }
     }
 
@@ -50,6 +97,65 @@ final class QingLongClient: ObservableObject {
         await loadSubscriptions()
         await loadLogs()
         await loadConfigFiles()
+    }
+
+    private func saveCurrentAccount(username: String, token: String) {
+        let displayName = baseURL.host ?? baseURL.absoluteString
+        if let index = accounts.firstIndex(where: { $0.baseURL == baseURL && $0.username == username }) {
+            accounts[index].token = token
+            accounts[index].lastLoginAt = Date()
+            accounts[index].name = displayName
+            selectedAccountID = accounts[index].id
+        } else {
+            let account = PanelAccount(name: displayName, baseURL: baseURL, username: username, token: token)
+            accounts.insert(account, at: 0)
+            selectedAccountID = account.id
+        }
+        if let selectedAccountID {
+            UserDefaults.standard.set(selectedAccountID.uuidString, forKey: selectedAccountKey)
+        }
+        saveAccounts()
+    }
+
+    private func loadAccounts() {
+        guard let data = UserDefaults.standard.data(forKey: accountsKey),
+              let decoded = try? JSONDecoder().decode([PanelAccount].self, from: data) else {
+            accounts = []
+            return
+        }
+        accounts = decoded
+    }
+
+    private func saveAccounts() {
+        if let data = try? JSONEncoder().encode(accounts) {
+            UserDefaults.standard.set(data, forKey: accountsKey)
+        }
+    }
+
+    private func restoreSelectedAccount() {
+        guard let idString = UserDefaults.standard.string(forKey: selectedAccountKey),
+              let id = UUID(uuidString: idString),
+              let account = accounts.first(where: { $0.id == id }) ?? accounts.first else {
+            return
+        }
+        baseURL = account.baseURL
+        token = account.token
+        username = account.username
+        selectedAccountID = account.id
+        Task { await refreshAll() }
+    }
+
+    private func clearData() {
+        crons = []
+        envs = []
+        scripts = []
+        dependencies = []
+        subscriptions = []
+        logs = []
+        configFiles = []
+        configContent = ""
+        scriptContent = ""
+        errorMessage = ""
     }
 
     func loadCrons() async {
