@@ -262,6 +262,17 @@ struct CronListView: View {
             .sheet(item: $editing) { item in CronEditorView(item: item).environmentObject(client) }
             .sheet(item: $showingLog) { item in CronLogDetailView(cron: item).environmentObject(client) }
             .sheet(isPresented: $creating) { CronEditorView(item: nil).environmentObject(client) }
+            .task {
+                await autoRefreshCrons()
+            }
+        }
+    }
+
+    private func autoRefreshCrons() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if Task.isCancelled { break }
+            await client.loadCrons()
         }
     }
 }
@@ -358,8 +369,16 @@ struct CronLogDetailView: View {
             }
             .task {
                 client.cronLogContent = ""
-                await client.loadCronLog(cron)
+                await autoRefreshLog()
             }
+        }
+    }
+
+    private func autoRefreshLog() async {
+        while !Task.isCancelled {
+            await client.loadCronLog(cron)
+            await client.loadCrons()
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
     }
 }
