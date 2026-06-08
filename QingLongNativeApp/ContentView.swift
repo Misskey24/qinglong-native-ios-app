@@ -262,26 +262,26 @@ struct CronStatusBadge: View {
     let cron: CronItem
 
     private var title: String {
-        if cron.isDisabled == 1 { return "已禁用" }
-        if cron.status == 1 { return "运行中" }
+        if cron.isCronDisabled { return "已禁用" }
+        if cron.isCronRunning { return "运行中" }
         return "空闲中"
     }
 
     private var tint: Color {
-        if cron.isDisabled == 1 { return .red }
-        if cron.status == 1 { return .blue }
+        if cron.isCronDisabled { return .red }
+        if cron.isCronRunning { return .blue }
         return .primary
     }
 
     var body: some View {
         HStack(spacing: 5) {
-            if cron.status == 1 && cron.isDisabled != 1 {
+            if cron.isCronRunning {
                 ProgressView()
                     .scaleEffect(0.65)
                     .frame(width: 14, height: 14)
                     .tint(tint)
             } else {
-                Image(systemName: cron.isDisabled == 1 ? "xmark.circle" : "clock")
+                Image(systemName: cron.isCronDisabled ? "xmark.circle" : "clock")
                     .font(.caption)
             }
             Text(title)

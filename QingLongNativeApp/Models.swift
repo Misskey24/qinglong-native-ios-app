@@ -32,9 +32,11 @@ struct CronItem: Identifiable, Codable {
 
     var title: String { nonEmpty(name) ?? nonEmpty(command) ?? "Task" }
     var subtitle: String { nonEmpty(schedule) ?? nonEmpty(command) ?? "" }
+    var isCronDisabled: Bool { isDisabled == 1 || status == 2 }
+    var isCronRunning: Bool { !isCronDisabled && status == 0 }
     var statusText: String {
-        if isDisabled == 1 { return "已禁用" }
-        if status == 1 { return "运行中" }
+        if isCronDisabled { return "已禁用" }
+        if isCronRunning { return "运行中" }
         return "空闲中"
     }
 }
