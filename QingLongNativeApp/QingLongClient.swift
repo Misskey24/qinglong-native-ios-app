@@ -6,6 +6,12 @@ final class QingLongClient: ObservableObject {
     @Published var token = ""
     @Published var crons: [CronItem] = []
     @Published var envs: [EnvItem] = []
+    @Published var scripts: [ScriptNode] = []
+    @Published var dependencies: [DependencyItem] = []
+    @Published var subscriptions: [SubscriptionItem] = []
+    @Published var logs: [LogNode] = []
+    @Published var configFiles: [ConfigFile] = []
+    @Published var configContent = ""
     @Published var isLoading = false
     @Published var errorMessage = ""
 
@@ -19,15 +25,14 @@ final class QingLongClient: ObservableObject {
         isLoading = true
         errorMessage = ""
         defer { isLoading = false }
-
         do {
             let body = LoginRequest(username: username, password: password)
             let response: APIResponse<LoginData> = try await request("user/login", method: "POST", body: body, authorized: false)
             guard response.code == nil || response.code == 200 else {
-                throw QingLongError.message(response.message ?? "登录失败")
+                throw QingLongError.message(response.message ?? "Login failed")
             }
             guard let token = response.data?.token, !token.isEmpty else {
-                throw QingLongError.message("登录成功但没有返回 token")
+                throw QingLongError.message("No token returned")
             }
             self.token = token
             await refreshAll()
@@ -39,12 +44,17 @@ final class QingLongClient: ObservableObject {
     func refreshAll() async {
         await loadCrons()
         await loadEnvs()
+        await loadScripts()
+        await loadDependencies()
+        await loadSubscriptions()
+        await loadLogs()
+        await loadConfigFiles()
     }
 
     func loadCrons() async {
         do {
-            let response: APIResponse<ListPage<CronItem>> = try await request("crons?page=1&size=100", method: "GET", authorized: true)
-            crons = response.data?.data ?? []
+            let response: APIResponse<FlexibleList<CronItem>> = try await request("crons", method: "GET", query: ["page": "1", "size": "100"], authorized: true)
+            crons = response.data?.items ?? []
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -52,53 +62,121 @@ final class QingLongClient: ObservableObject {
 
     func loadEnvs() async {
         do {
-            let response: APIResponse<[EnvItem]> = try await request("envs", method: "GET", authorized: true)
-            envs = response.data ?? []
-        } catch {
-            do {
-                let response: APIResponse<ListPage<EnvItem>> = try await request("envs", method: "GET", authorized: true)
-                envs = response.data?.data ?? []
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    func runCron(_ cron: CronItem) async {
-        await operateCron("crons/run", ids: [cron.id], toast: "任务已运行")
-    }
-
-    func stopCron(_ cron: CronItem) async {
-        await operateCron("crons/stop", ids: [cron.id], toast: "任务已停止")
-    }
-
-    func toggleCron(_ cron: CronItem) async {
-        let path = cron.isDisabled == 1 ? "crons/enable" : "crons/disable"
-        await operateCron(path, ids: [cron.id], toast: "任务状态已更新")
-    }
-
-    func toggleEnv(_ env: EnvItem) async {
-        let path = env.enabled ? "envs/disable" : "envs/enable"
-        await operateCron(path, ids: [env.id], toast: "变量状态已更新")
-        await loadEnvs()
-    }
-
-    private func operateCron(_ path: String, ids: [Int], toast: String) async {
-        do {
-            let _: APIResponse<EmptyData> = try await request(path, method: "PUT", body: ids, authorized: true)
-            errorMessage = toast
-            await loadCrons()
+            let response: APIResponse<FlexibleList<EnvItem>> = try await request("envs", method: "GET", authorized: true)
+            envs = response.data?.items ?? []
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func request<T: Decodable>(_ path: String, method: String, authorized: Bool) async throws -> T {
-        var request = URLRequest(url: endpoint(path))
+    func loadScripts() async {
+        do {
+            let response: APIResponse<FlexibleList<ScriptNode>> = try await request("scripts", method: "GET", authorized: true)
+            scripts = response.data?.items ?? []
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadDependencies() async {
+        do {
+            let response: APIResponse<FlexibleList<DependencyItem>> = try await request("dependencies", method: "GET", query: ["page": "1", "size": "100"], authorized: true)
+            dependencies = response.data?.items ?? []
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadSubscriptions() async {
+        do {
+            let response: APIResponse<FlexibleList<SubscriptionItem>> = try await request("subscriptions", method: "GET", authorized: true)
+            subscriptions = response.data?.items ?? []
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadLogs() async {
+        do {
+            let response: APIResponse<FlexibleList<LogNode>> = try await request("logs", method: "GET", authorized: true)
+            logs = response.data?.items ?? []
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadConfigFiles() async {
+        do {
+            let response: APIResponse<FlexibleList<ConfigFile>> = try await request("configs/files", method: "GET", authorized: true)
+            configFiles = response.data?.items ?? []
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadConfigDetail(_ name: String) async {
+        do {
+            let response: APIResponse<String> = try await request("configs/detail", method: "GET", query: ["path": name], authorized: true)
+            configContent = response.data ?? ""
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func saveConfig(name: String, content: String) async {
+        do {
+            let _: APIResponse<EmptyData> = try await request("configs/save", method: "POST", body: ["name": name, "content": content], authorized: true)
+            errorMessage = "Saved"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func runCron(_ cron: CronItem) async {
+        await operate("crons/run", ids: [cron.id])
+        await loadCrons()
+    }
+
+    func stopCron(_ cron: CronItem) async {
+        await operate("crons/stop", ids: [cron.id])
+        await loadCrons()
+    }
+
+    func toggleCron(_ cron: CronItem) async {
+        await operate(cron.isDisabled == 1 ? "crons/enable" : "crons/disable", ids: [cron.id])
+        await loadCrons()
+    }
+
+    func toggleEnv(_ env: EnvItem) async {
+        await operate(env.enabled ? "envs/disable" : "envs/enable", ids: [env.id])
+        await loadEnvs()
+    }
+
+    func reinstallDependency(_ item: DependencyItem) async {
+        await operate("dependencies/reinstall", ids: [item.id])
+        await loadDependencies()
+    }
+
+    func runSubscription(_ item: SubscriptionItem) async {
+        await operate("subscriptions/run", ids: [item.id])
+        await loadSubscriptions()
+    }
+
+    private func operate(_ path: String, ids: [Int]) async {
+        do {
+            let _: APIResponse<EmptyData> = try await request(path, method: "PUT", body: ids, authorized: true)
+            errorMessage = "Done"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func request<T: Decodable>(_ path: String, method: String, query: [String: String] = [:], authorized: Bool) async throws -> T {
+        var request = URLRequest(url: endpoint(path, query: query))
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if authorized {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue(authHeader, forHTTPHeaderField: "Authorization")
         }
         return try await send(request)
     }
@@ -109,7 +187,7 @@ final class QingLongClient: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if authorized {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue(authHeader, forHTTPHeaderField: "Authorization")
         }
         request.httpBody = try JSONEncoder().encode(body)
         return try await send(request)
@@ -118,7 +196,7 @@ final class QingLongClient: ObservableObject {
     private func send<T: Decodable>(_ request: URLRequest) async throws -> T {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            throw QingLongError.message("服务器无响应")
+            throw QingLongError.message("No server response")
         }
         guard (200..<300).contains(http.statusCode) else {
             let text = String(data: data, encoding: .utf8) ?? ""
@@ -127,14 +205,23 @@ final class QingLongClient: ObservableObject {
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    private func endpoint(_ path: String) -> URL {
+    private func endpoint(_ path: String, query: [String: String] = [:]) -> URL {
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
         var clean = path
         if clean.hasPrefix("/") { clean.removeFirst() }
-        return baseURL.appendingPathComponent("api").appendingPathComponent(clean)
+        let basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let parts = ([basePath, "api", clean]).filter { !$0.isEmpty }
+        components.path = "/" + parts.joined(separator: "/")
+        if !query.isEmpty {
+            components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        return components.url!
+    }
+
+    private var authHeader: String {
+        token.lowercased().hasPrefix("bearer ") ? token : "Bearer \(token)"
     }
 }
-
-struct EmptyData: Decodable {}
 
 enum QingLongError: LocalizedError {
     case message(String)
