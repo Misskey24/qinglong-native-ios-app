@@ -134,7 +134,8 @@ struct FlexibleList<T: Decodable>: Decodable {
     }
 
     init(from decoder: Decoder) throws {
-        if let array = try? [T](from: decoder) {
+        let single = try decoder.singleValueContainer()
+        if let array = try? single.decode([T].self) {
             items = array
             return
         }

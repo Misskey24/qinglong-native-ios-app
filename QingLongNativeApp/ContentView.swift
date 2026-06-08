@@ -258,19 +258,15 @@ struct MoreView: View {
 struct ScriptListView: View {
     @EnvironmentObject private var client: QingLongClient
     var body: some View {
-        List { scriptRows(client.scripts) }
+        List(flattenScripts(client.scripts)) { row in
+            HStack {
+                Image(systemName: row.isDirectory ? "folder" : "doc.text").foregroundStyle(.green)
+                Text(row.name).padding(.leading, CGFloat(row.level * 14))
+            }
+        }
             .navigationTitle("Scripts")
             .refreshable { await client.loadScripts() }
             .toolbar { refreshButton { await client.loadScripts() } }
-    }
-    @ViewBuilder private func scriptRows(_ nodes: [ScriptNode], level: Int = 0) -> some View {
-        ForEach(nodes) { node in
-            HStack {
-                Image(systemName: node.isDirectory ? "folder" : "doc.text").foregroundStyle(.green)
-                Text(node.name).padding(.leading, CGFloat(level * 14))
-            }
-            if let children = node.children { scriptRows(children, level: level + 1) }
-        }
     }
 }
 
@@ -317,19 +313,15 @@ struct SubscriptionListView: View {
 struct LogListView: View {
     @EnvironmentObject private var client: QingLongClient
     var body: some View {
-        List { logRows(client.logs) }
+        List(flattenLogs(client.logs)) { row in
+            HStack {
+                Image(systemName: row.isDirectory ? "folder" : "doc.text").foregroundStyle(.green)
+                Text(row.name).padding(.leading, CGFloat(row.level * 14))
+            }
+        }
             .navigationTitle("Logs")
             .refreshable { await client.loadLogs() }
             .toolbar { refreshButton { await client.loadLogs() } }
-    }
-    @ViewBuilder private func logRows(_ nodes: [LogNode], level: Int = 0) -> some View {
-        ForEach(nodes) { node in
-            HStack {
-                Image(systemName: node.isDirectory ? "folder" : "doc.text").foregroundStyle(.green)
-                Text(node.name).padding(.leading, CGFloat(level * 14))
-            }
-            if let children = node.children { logRows(children, level: level + 1) }
-        }
     }
 }
 
@@ -390,6 +382,27 @@ struct EmptyStateView: View {
 func refreshButton(_ action: @escaping () async -> Void) -> some ToolbarContent {
     ToolbarItem(placement: .navigationBarTrailing) {
         Button { Task { await action() } } label: { Image(systemName: "arrow.clockwise") }
+    }
+}
+
+struct TreeRow: Identifiable {
+    let id: String
+    let name: String
+    let isDirectory: Bool
+    let level: Int
+}
+
+func flattenScripts(_ nodes: [ScriptNode], level: Int = 0) -> [TreeRow] {
+    nodes.flatMap { node -> [TreeRow] in
+        let current = TreeRow(id: node.id, name: node.name, isDirectory: node.isDirectory, level: level)
+        return [current] + flattenScripts(node.children ?? [], level: level + 1)
+    }
+}
+
+func flattenLogs(_ nodes: [LogNode], level: Int = 0) -> [TreeRow] {
+    nodes.flatMap { node -> [TreeRow] in
+        let current = TreeRow(id: node.id, name: node.name, isDirectory: node.isDirectory, level: level)
+        return [current] + flattenLogs(node.children ?? [], level: level + 1)
     }
 }
 
