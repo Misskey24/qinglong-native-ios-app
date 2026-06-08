@@ -12,6 +12,7 @@ final class QingLongClient: ObservableObject {
     @Published var logs: [LogNode] = []
     @Published var configFiles: [ConfigFile] = []
     @Published var configContent = ""
+    @Published var scriptContent = ""
     @Published var isLoading = false
     @Published var errorMessage = ""
 
@@ -127,6 +128,70 @@ final class QingLongClient: ObservableObject {
         do {
             let _: APIResponse<EmptyData> = try await request("configs/save", method: "POST", body: ["name": name, "content": content], authorized: true)
             errorMessage = "Saved"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func saveCron(_ payload: CronPayload) async {
+        do {
+            let method = payload.id == nil ? "POST" : "PUT"
+            let _: APIResponse<EmptyData> = try await request("crons", method: method, body: payload, authorized: true)
+            errorMessage = payload.id == nil ? "任务已创建" : "任务已保存"
+            await loadCrons()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func saveEnv(_ payload: EnvPayload) async {
+        do {
+            let method = payload.id == nil ? "POST" : "PUT"
+            let _: APIResponse<EmptyData> = try await request("envs", method: method, body: payload, authorized: true)
+            errorMessage = payload.id == nil ? "变量已创建" : "变量已保存"
+            await loadEnvs()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func saveDependency(_ payload: DependencyPayload) async {
+        do {
+            let method = payload.id == nil ? "POST" : "PUT"
+            let _: APIResponse<EmptyData> = try await request("dependencies", method: method, body: payload, authorized: true)
+            errorMessage = payload.id == nil ? "依赖已创建" : "依赖已保存"
+            await loadDependencies()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func saveSubscription(_ payload: SubscriptionPayload) async {
+        do {
+            let method = payload.id == nil ? "POST" : "PUT"
+            let _: APIResponse<EmptyData> = try await request("subscriptions", method: method, body: payload, authorized: true)
+            errorMessage = payload.id == nil ? "订阅已创建" : "订阅已保存"
+            await loadSubscriptions()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadScriptDetail(file: String, path: String = "") async {
+        do {
+            let response: APIResponse<String> = try await request("scripts/detail", method: "GET", query: ["file": file, "path": path], authorized: true)
+            scriptContent = response.data ?? ""
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func saveScript(filename: String, path: String, content: String) async {
+        do {
+            let payload = ScriptPayload(filename: filename, path: path, content: content)
+            let _: APIResponse<EmptyData> = try await request("scripts", method: "PUT", body: payload, authorized: true)
+            errorMessage = "脚本已保存"
+            await loadScripts()
         } catch {
             errorMessage = error.localizedDescription
         }

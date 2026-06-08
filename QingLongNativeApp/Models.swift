@@ -21,6 +21,14 @@ struct CronItem: Identifiable, Codable {
     }
 }
 
+struct CronPayload: Encodable {
+    var id: Int?
+    var name: String
+    var command: String
+    var schedule: String
+    var labels: [String]?
+}
+
 struct EnvItem: Identifiable, Codable {
     let id: Int
     let name: String?
@@ -31,6 +39,13 @@ struct EnvItem: Identifiable, Codable {
     var title: String { nonEmpty(name) ?? "Variable" }
     var subtitle: String { nonEmpty(remarks) ?? masked(value) }
     var enabled: Bool { status != 1 }
+}
+
+struct EnvPayload: Encodable {
+    var id: Int?
+    var name: String
+    var value: String
+    var remarks: String
 }
 
 struct ScriptNode: Identifiable, Codable {
@@ -65,6 +80,13 @@ struct DependencyItem: Identifiable, Codable {
     }
 }
 
+struct DependencyPayload: Encodable {
+    var id: Int?
+    var name: String
+    var type: String
+    var remarks: String
+}
+
 struct SubscriptionItem: Identifiable, Codable {
     let id: Int
     let name: String?
@@ -81,6 +103,20 @@ struct SubscriptionItem: Identifiable, Codable {
 
     var title: String { nonEmpty(name) ?? "Subscription" }
     var subtitle: String { nonEmpty(url) ?? nonEmpty(schedule) ?? "" }
+}
+
+struct SubscriptionPayload: Encodable {
+    var id: Int?
+    var name: String
+    var url: String
+    var branch: String
+    var schedule: String
+}
+
+struct ScriptPayload: Encodable {
+    var filename: String
+    var path: String
+    var content: String
 }
 
 struct LogNode: Identifiable, Codable {
