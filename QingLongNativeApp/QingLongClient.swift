@@ -65,6 +65,14 @@ final class QingLongClient: ObservableObject {
         await refreshAll()
     }
 
+    func beginAddingPanel() {
+        token = ""
+        username = ""
+        selectedAccountID = nil
+        UserDefaults.standard.removeObject(forKey: selectedAccountKey)
+        clearData()
+    }
+
     func logoutCurrentAccount() {
         guard let selectedAccountID else {
             token = ""

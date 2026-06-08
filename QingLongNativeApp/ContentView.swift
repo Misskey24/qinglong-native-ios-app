@@ -209,17 +209,27 @@ struct CronListView: View {
     var body: some View {
         NavigationStack {
             List(client.crons) { cron in
-                Button { editing = cron } label: {
+                HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(cron.title).fontWeight(.semibold).foregroundStyle(.primary)
-                            Spacer()
-                            Text(cron.statusText)
-                                .font(.caption)
-                                .foregroundStyle(cron.isDisabled == 1 ? .red : .green)
-                        }
+                        Text(cron.title).fontWeight(.semibold).foregroundStyle(.primary)
                         Text(cron.subtitle).foregroundStyle(.secondary)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { editing = cron }
+
+                    Button {
+                        Task { await client.runCron(cron) }
+                    } label: {
+                        Text("运行")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Color.green.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
                 .swipeActions(edge: .leading) {
                     Button("运行") { Task { await client.runCron(cron) } }.tint(.green)
@@ -290,15 +300,43 @@ struct EnvListView: View {
 
 struct MoreView: View {
     @EnvironmentObject private var client: QingLongClient
-    @State private var showingAccounts = false
 
     var body: some View {
         NavigationStack {
             List {
                 Section("连接") {
                     Text(client.baseURL.absoluteString)
+                    if !client.accounts.isEmpty {
+                        ForEach(client.accounts) { account in
+                            Button {
+                                Task { await client.switchAccount(account) }
+                            } label: {
+                                HStack(alignment: .center, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(account.name)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.primary)
+                                        Text(account.baseURL.absoluteString)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Text(account.username)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if client.selectedAccountID == account.id {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.green)
+                                    }
+                                }
+                            }
+                            .swipeActions {
+                                Button("删除", role: .destructive) { client.removeAccount(account) }
+                            }
+                        }
+                    }
                     Button("刷新全部数据") { Task { await client.refreshAll() } }
-                    Button("切换青龙面板") { showingAccounts = true }
+                    Button("添加青龙面板") { client.beginAddingPanel() }
                     Button("退出当前面板", role: .destructive) { client.logoutCurrentAccount() }
                 }
                 Section("管理") {
@@ -310,9 +348,6 @@ struct MoreView: View {
                 }
             }
             .navigationTitle("更多")
-            .sheet(isPresented: $showingAccounts) {
-                AccountManagerView().environmentObject(client)
-            }
         }
     }
 }
