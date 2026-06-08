@@ -1,33 +1,29 @@
 import SwiftUI
-import WebKit
 
 struct ContentView: View {
-    @State private var remoteURL: URL?
+    @StateObject private var client = QingLongClient()
 
     var body: some View {
         Group {
-            if let remoteURL {
-                QingLongWebShell(url: remoteURL) {
-                    self.remoteURL = nil
-                }
+            if client.isLoggedIn {
+                MainTabs()
+                    .environmentObject(client)
             } else {
-                RemoteLoginView { url in
-                    remoteURL = url
-                }
+                LoginView()
+                    .environmentObject(client)
             }
         }
         .tint(.green)
     }
 }
 
-struct RemoteLoginView: View {
-    let onConnect: (URL) -> Void
-
+struct LoginView: View {
+    @EnvironmentObject private var client: QingLongClient
     @State private var useHTTPS = false
     @State private var host = "192.168.1.20"
     @State private var port = "5700"
-    @State private var path = "/"
-    @State private var errorMessage = ""
+    @State private var username = "admin"
+    @State private var password = ""
 
     var body: some View {
         NavigationStack {
@@ -41,10 +37,9 @@ struct RemoteLoginView: View {
                             .background(Color.green.opacity(0.12))
                             .clipShape(RoundedRectangle(cornerRadius: 20))
 
-                        Text("远程青龙")
+                        Text("青龙管理")
                             .font(.system(size: 36, weight: .black))
-
-                        Text("输入你的青龙面板地址，App 会直接打开远程面板。登录、任务、环境变量、脚本、日志都在真实服务器上操作。")
+                        Text("原生 App 管理远程青龙面板。输入面板地址和账号密码后，直接读取任务、环境变量等真实数据。")
                             .foregroundStyle(.secondary)
                             .lineSpacing(4)
                     }
@@ -63,22 +58,23 @@ struct RemoteLoginView: View {
                             port = enabled ? "443" : "5700"
                         }
 
-                        TextField("IP 或域名，例如 192.168.1.20", text: $host)
+                        TextField("IP 或域名", text: $host)
                             .textInputAutocapitalization(.never)
                             .keyboardType(.URL)
                             .fieldStyle()
 
-                        HStack {
-                            TextField("端口", text: $port)
-                                .keyboardType(.numberPad)
-                                .fieldStyle()
-                            TextField("路径", text: $path)
-                                .textInputAutocapitalization(.never)
-                                .fieldStyle()
-                                .frame(width: 104)
-                        }
+                        TextField("端口", text: $port)
+                            .keyboardType(.numberPad)
+                            .fieldStyle()
 
-                        Text("当前地址：\(previewAddress)")
+                        TextField("用户名", text: $username)
+                            .textInputAutocapitalization(.never)
+                            .fieldStyle()
+
+                        SecureField("密码", text: $password)
+                            .fieldStyle()
+
+                        Text("接口地址：\(baseURL.absoluteString)/api")
                             .font(.footnote)
                             .foregroundStyle(.green)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -86,37 +82,35 @@ struct RemoteLoginView: View {
                             .background(Color.green.opacity(0.12))
                             .clipShape(RoundedRectangle(cornerRadius: 14))
 
-                        if !errorMessage.isEmpty {
-                            Text(errorMessage)
+                        if !client.errorMessage.isEmpty {
+                            Text(client.errorMessage)
                                 .font(.footnote)
-                                .foregroundStyle(.red)
+                                .foregroundStyle(client.errorMessage.contains("已") ? .green : .red)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
                         Button {
-                            connect()
+                            Task {
+                                client.configure(baseURL: baseURL)
+                                await client.login(username: username, password: password)
+                            }
                         } label: {
-                            Text("打开青龙面板")
-                                .fontWeight(.bold)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
+                            HStack {
+                                if client.isLoading { ProgressView().tint(.white) }
+                                Text("登录并读取面板")
+                                    .fontWeight(.bold)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
                         }
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.roundedRectangle(radius: 16))
+                        .disabled(client.isLoading)
                     }
                     .padding(16)
                     .background(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 24))
                     .shadow(color: .black.opacity(0.06), radius: 18, y: 10)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("常用地址")
-                            .font(.footnote.bold())
-                            .foregroundStyle(.secondary)
-                        recent("http://192.168.1.20:5700")
-                        recent("http://qinglong.local:5700")
-                        recent("https://ql.example.com")
-                    }
                 }
                 .padding(18)
             }
@@ -126,170 +120,201 @@ struct RemoteLoginView: View {
         }
     }
 
-    private var previewAddress: String {
+    private var baseURL: URL {
         let scheme = useHTTPS ? "https" : "http"
-        let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanPath = path.hasPrefix("/") ? path : "/\(path)"
         let defaultPort = useHTTPS ? "443" : "80"
         let portPart = port.isEmpty || port == defaultPort ? "" : ":\(port)"
-        return "\(scheme)://\(cleanHost)\(portPart)\(cleanPath)"
-    }
-
-    private func connect() {
-        guard let url = URL(string: previewAddress), !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "请输入正确的青龙面板地址"
-            return
-        }
-        errorMessage = ""
-        onConnect(url)
-    }
-
-    private func recent(_ address: String) -> some View {
-        Button {
-            apply(address)
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(address).fontWeight(.semibold)
-                    Text(address.hasPrefix("https") ? "HTTPS 远程反代" : "HTTP 局域网 / 内网穿透")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(.green)
-            }
-            .padding(.vertical, 9)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func apply(_ address: String) {
-        guard let url = URL(string: address) else { return }
-        useHTTPS = url.scheme == "https"
-        host = url.host ?? host
-        port = url.port.map(String.init) ?? (useHTTPS ? "443" : "5700")
-        path = url.path.isEmpty ? "/" : url.path
+        return URL(string: "\(scheme)://\(host.trimmingCharacters(in: .whitespacesAndNewlines))\(portPart)")!
     }
 }
 
-struct QingLongWebShell: View {
-    let url: URL
-    let onClose: () -> Void
+struct MainTabs: View {
+    var body: some View {
+        TabView {
+            DashboardView()
+                .tabItem { Label("首页", systemImage: "house") }
+            CronListView()
+                .tabItem { Label("任务", systemImage: "play.circle") }
+            EnvListView()
+                .tabItem { Label("环境", systemImage: "circle.hexagongrid") }
+            MoreView()
+                .tabItem { Label("更多", systemImage: "ellipsis.circle") }
+        }
+    }
+}
 
-    @StateObject private var model = WebViewModel()
+struct DashboardView: View {
+    @EnvironmentObject private var client: QingLongClient
 
     var body: some View {
         NavigationStack {
-            QingLongWebView(url: url, model: model)
-                .ignoresSafeArea(edges: .bottom)
-                .navigationTitle(model.title.isEmpty ? "青龙面板" : model.title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItemGroup(placement: .topBarLeading) {
-                        Button(action: onClose) {
-                            Image(systemName: "xmark")
-                        }
-                        Button {
-                            model.goBack()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                        }
-                        .disabled(!model.canGoBack)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("面板状态")
+                        .font(.system(size: 34, weight: .black))
+                    Text(client.baseURL.absoluteString)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        metric("定时任务", "\(client.crons.count)")
+                        metric("环境变量", "\(client.envs.count)")
                     }
 
-                    ToolbarItemGroup(placement: .topBarTrailing) {
-                        Button {
-                            model.reload()
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                        Button {
-                            model.goHome(url)
-                        } label: {
-                            Image(systemName: "house")
-                        }
+                    if !client.errorMessage.isEmpty {
+                        Text(client.errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                 }
-                .overlay(alignment: .top) {
-                    if model.isLoading {
-                        ProgressView(value: model.estimatedProgress)
-                            .progressViewStyle(.linear)
-                    }
+                .padding(18)
+            }
+            .navigationTitle("青龙管理")
+            .toolbar {
+                Button {
+                    Task { await client.refreshAll() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
+            }
+        }
+    }
+
+    private func metric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(value).font(.title.bold())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.green.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+}
+
+struct CronListView: View {
+    @EnvironmentObject private var client: QingLongClient
+
+    var body: some View {
+        NavigationStack {
+            List(client.crons) { cron in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text(cron.title).fontWeight(.semibold)
+                        Spacer()
+                        Text(cron.statusText)
+                            .font(.caption)
+                            .foregroundStyle(cron.isDisabled == 1 ? .red : .green)
+                    }
+                    Text(cron.subtitle).foregroundStyle(.secondary)
+                }
+                .swipeActions(edge: .leading) {
+                    Button("运行") { Task { await client.runCron(cron) } }
+                        .tint(.green)
+                    Button("停止") { Task { await client.stopCron(cron) } }
+                        .tint(.orange)
+                }
+                .swipeActions(edge: .trailing) {
+                    Button(cron.isDisabled == 1 ? "启用" : "禁用") {
+                        Task { await client.toggleCron(cron) }
+                    }
+                    .tint(cron.isDisabled == 1 ? .green : .red)
+                }
+            }
+            .overlay {
+                if client.crons.isEmpty {
+                    EmptyStateView(title: "没有任务数据", subtitle: "下拉刷新或检查登录地址。", icon: "tray")
+                }
+            }
+            .navigationTitle("定时任务")
+            .refreshable { await client.loadCrons() }
+            .toolbar {
+                Button { Task { await client.loadCrons() } } label: { Image(systemName: "arrow.clockwise") }
+            }
         }
     }
 }
 
-final class WebViewModel: NSObject, ObservableObject, WKNavigationDelegate {
-    weak var webView: WKWebView?
-    @Published var title = ""
-    @Published var canGoBack = false
-    @Published var isLoading = false
-    @Published var estimatedProgress = 0.0
+struct EnvListView: View {
+    @EnvironmentObject private var client: QingLongClient
 
-    private var observations: [NSKeyValueObservation] = []
-
-    func attach(_ webView: WKWebView) {
-        guard self.webView !== webView else { return }
-        self.webView = webView
-        webView.navigationDelegate = self
-        observations = [
-            webView.observe(\.title, options: [.new]) { [weak self] webView, _ in
-                DispatchQueue.main.async {
-                    self?.title = webView.title ?? ""
+    var body: some View {
+        NavigationStack {
+            List(client.envs) { env in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text(env.title).fontWeight(.semibold)
+                        Spacer()
+                        Image(systemName: env.enabled ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(env.enabled ? .green : .red)
+                    }
+                    Text(env.subtitle).foregroundStyle(.secondary)
                 }
-            },
-            webView.observe(\.canGoBack, options: [.new]) { [weak self] webView, _ in
-                DispatchQueue.main.async {
-                    self?.canGoBack = webView.canGoBack
-                }
-            },
-            webView.observe(\.isLoading, options: [.new]) { [weak self] webView, _ in
-                DispatchQueue.main.async {
-                    self?.isLoading = webView.isLoading
-                }
-            },
-            webView.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
-                DispatchQueue.main.async {
-                    self?.estimatedProgress = webView.estimatedProgress
+                .swipeActions {
+                    Button(env.enabled ? "禁用" : "启用") {
+                        Task { await client.toggleEnv(env) }
+                    }
+                    .tint(env.enabled ? .red : .green)
                 }
             }
-        ]
-    }
-
-    func goBack() {
-        webView?.goBack()
-    }
-
-    func reload() {
-        webView?.reload()
-    }
-
-    func goHome(_ url: URL) {
-        webView?.load(URLRequest(url: url))
+            .overlay {
+                if client.envs.isEmpty {
+                    EmptyStateView(title: "没有环境变量", subtitle: "下拉刷新或检查登录权限。", icon: "tray")
+                }
+            }
+            .navigationTitle("环境变量")
+            .refreshable { await client.loadEnvs() }
+            .toolbar {
+                Button { Task { await client.loadEnvs() } } label: { Image(systemName: "arrow.clockwise") }
+            }
+        }
     }
 }
 
-struct QingLongWebView: UIViewRepresentable {
-    let url: URL
-    let model: WebViewModel
+struct MoreView: View {
+    @EnvironmentObject private var client: QingLongClient
 
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
-        configuration.allowsInlineMediaPlayback = true
-
-        let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.allowsBackForwardNavigationGestures = true
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
-        model.attach(webView)
-        webView.load(URLRequest(url: url))
-        return webView
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("连接") {
+                    Text(client.baseURL.absoluteString)
+                    Button("刷新全部数据") {
+                        Task { await client.refreshAll() }
+                    }
+                }
+                Section("后续可继续接入") {
+                    Text("脚本文件管理")
+                    Text("依赖管理")
+                    Text("日志查看")
+                    Text("配置文件编辑")
+                }
+            }
+            .navigationTitle("更多")
+        }
     }
+}
 
-    func updateUIView(_ uiView: WKWebView, context: Context) {
-        model.attach(uiView)
+struct EmptyStateView: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 34))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.headline)
+            Text(subtitle)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
     }
 }
 
