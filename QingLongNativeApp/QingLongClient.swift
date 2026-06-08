@@ -19,6 +19,7 @@ final class QingLongClient: ObservableObject {
     @Published var configFiles: [ConfigFile] = []
     @Published var configContent = ""
     @Published var scriptContent = ""
+    @Published var cronLogContent = ""
     @Published var isLoading = false
     @Published var errorMessage = ""
 
@@ -163,6 +164,7 @@ final class QingLongClient: ObservableObject {
         configFiles = []
         configContent = ""
         scriptContent = ""
+        cronLogContent = ""
         errorMessage = ""
     }
 
@@ -234,6 +236,18 @@ final class QingLongClient: ObservableObject {
             let response: APIResponse<String> = try await request("configs/detail", method: "GET", query: ["path": name], authorized: true)
             configContent = response.data ?? ""
         } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadCronLog(_ cron: CronItem) async {
+        isLoading = true
+        errorMessage = ""
+        defer { isLoading = false }
+        do {
+            cronLogContent = try await requestString("crons/\(cron.id)/log", method: "GET", authorized: true)
+        } catch {
+            cronLogContent = ""
             errorMessage = error.localizedDescription
         }
     }
@@ -382,6 +396,31 @@ final class QingLongClient: ObservableObject {
             throw QingLongError.message("HTTP \(http.statusCode) \(text)")
         }
         return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    private func requestString(_ path: String, method: String, query: [String: String] = [:], authorized: Bool) async throws -> String {
+        var request = URLRequest(url: endpoint(path, query: query))
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if authorized {
+            request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw QingLongError.message("No server response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw QingLongError.message("HTTP \(http.statusCode) \(text)")
+        }
+        if let decoded = try? JSONDecoder().decode(APIResponse<String>.self, from: data) {
+            guard decoded.code == nil || decoded.code == 200 else {
+                throw QingLongError.message(decoded.message ?? "Request failed")
+            }
+            return decoded.data ?? decoded.message ?? ""
+        }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
     private func endpoint(_ path: String, query: [String: String] = [:]) -> URL {

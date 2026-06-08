@@ -204,6 +204,7 @@ struct DashboardView: View {
 struct CronListView: View {
     @EnvironmentObject private var client: QingLongClient
     @State private var editing: CronItem?
+    @State private var showingLog: CronItem?
     @State private var creating = false
 
     var body: some View {
@@ -211,13 +212,19 @@ struct CronListView: View {
             List(client.crons) { cron in
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(cron.title).fontWeight(.semibold).foregroundStyle(.primary)
-                        Text(cron.subtitle).foregroundStyle(.secondary)
-                        CronStatusBadge(cron: cron)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(cron.title).fontWeight(.semibold).foregroundStyle(.primary)
+                            Text(cron.subtitle).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { editing = cron }
+
+                        CronStatusBadge(cron: cron) {
+                            showingLog = cron
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture { editing = cron }
 
                     Button {
                         Task { await client.runCron(cron) }
@@ -253,6 +260,7 @@ struct CronListView: View {
                 }
             }
             .sheet(item: $editing) { item in CronEditorView(item: item).environmentObject(client) }
+            .sheet(item: $showingLog) { item in CronLogDetailView(cron: item).environmentObject(client) }
             .sheet(isPresented: $creating) { CronEditorView(item: nil).environmentObject(client) }
         }
     }
@@ -260,6 +268,7 @@ struct CronListView: View {
 
 struct CronStatusBadge: View {
     let cron: CronItem
+    var onOpenLog: (() -> Void)? = nil
 
     private var title: String {
         if cron.isCronDisabled { return "已禁用" }
@@ -273,7 +282,19 @@ struct CronStatusBadge: View {
         return .primary
     }
 
+    @ViewBuilder
     var body: some View {
+        if cron.isCronRunning, let onOpenLog {
+            Button(action: onOpenLog) {
+                badgeContent
+            }
+            .buttonStyle(.plain)
+        } else {
+            badgeContent
+        }
+    }
+
+    private var badgeContent: some View {
         HStack(spacing: 5) {
             if cron.isCronRunning {
                 ProgressView()
@@ -296,6 +317,50 @@ struct CronStatusBadge: View {
                 .stroke(tint.opacity(0.28), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+}
+
+struct CronLogDetailView: View {
+    @EnvironmentObject private var client: QingLongClient
+    @Environment(\.dismiss) private var dismiss
+    let cron: CronItem
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if client.isLoading && client.cronLogContent.isEmpty {
+                    ProgressView("正在读取运行日志")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if client.cronLogContent.isEmpty {
+                    EmptyStateView(title: "暂无运行日志", subtitle: "请确认任务仍在执行，或稍后刷新。", icon: "doc.text.magnifyingglass")
+                } else {
+                    ScrollView {
+                        Text(client.cronLogContent)
+                            .font(.system(size: 13, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    .background(Color(.secondarySystemBackground))
+                }
+            }
+            .navigationTitle(cron.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { Task { await client.loadCronLog(cron) } } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+            }
+            .task {
+                client.cronLogContent = ""
+                await client.loadCronLog(cron)
+            }
+        }
     }
 }
 
