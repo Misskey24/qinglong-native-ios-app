@@ -213,6 +213,7 @@ struct CronListView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(cron.title).fontWeight(.semibold).foregroundStyle(.primary)
                         Text(cron.subtitle).foregroundStyle(.secondary)
+                        CronStatusBadge(cron: cron)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -254,6 +255,47 @@ struct CronListView: View {
             .sheet(item: $editing) { item in CronEditorView(item: item).environmentObject(client) }
             .sheet(isPresented: $creating) { CronEditorView(item: nil).environmentObject(client) }
         }
+    }
+}
+
+struct CronStatusBadge: View {
+    let cron: CronItem
+
+    private var title: String {
+        if cron.isDisabled == 1 { return "已禁用" }
+        if cron.status == 1 { return "运行中" }
+        return "空闲中"
+    }
+
+    private var tint: Color {
+        if cron.isDisabled == 1 { return .red }
+        if cron.status == 1 { return .blue }
+        return .primary
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if cron.status == 1 && cron.isDisabled != 1 {
+                ProgressView()
+                    .scaleEffect(0.65)
+                    .frame(width: 14, height: 14)
+                    .tint(tint)
+            } else {
+                Image(systemName: cron.isDisabled == 1 ? "xmark.circle" : "clock")
+                    .font(.caption)
+            }
+            Text(title)
+                .font(.caption)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(tint.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(tint.opacity(0.28), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 }
 
