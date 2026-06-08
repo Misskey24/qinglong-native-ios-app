@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		3A1111111111111111111111 /* QingLongNativeAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2222222222222222222222 /* QingLongNativeAppApp.swift */; };
 		3A1111111111111111111112 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2222222222222222222223 /* ContentView.swift */; };
-		3A1111111111111111111113 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2222222222222222222224 /* Models.swift */; };
 		3A1111111111111111111114 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3A2222222222222222222225 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -17,7 +16,6 @@
 		3A2222222222222222222221 /* QingLongNativeApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QingLongNativeApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A2222222222222222222222 /* QingLongNativeAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QingLongNativeAppApp.swift; sourceTree = "<group>"; };
 		3A2222222222222222222223 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		3A2222222222222222222224 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		3A2222222222222222222225 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3A2222222222222222222226 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -46,7 +44,6 @@
 			children = (
 				3A2222222222222222222222 /* QingLongNativeAppApp.swift */,
 				3A2222222222222222222223 /* ContentView.swift */,
-				3A2222222222222222222224 /* Models.swift */,
 				3A2222222222222222222225 /* Assets.xcassets */,
 				3A2222222222222222222226 /* Info.plist */,
 			);
@@ -132,7 +129,6 @@
 			files = (
 				3A1111111111111111111111 /* QingLongNativeAppApp.swift in Sources */,
 				3A1111111111111111111112 /* ContentView.swift in Sources */,
-				3A1111111111111111111113 /* Models.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
