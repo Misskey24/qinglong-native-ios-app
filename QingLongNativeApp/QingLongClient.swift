@@ -20,6 +20,7 @@ final class QingLongClient: ObservableObject {
     @Published var configContent = ""
     @Published var scriptContent = ""
     @Published var cronLogContent = ""
+    @Published var scriptDebugOutput = ""
     @Published var isLoading = false
     @Published var errorMessage = ""
 
@@ -174,6 +175,7 @@ final class QingLongClient: ObservableObject {
         configContent = ""
         scriptContent = ""
         cronLogContent = ""
+        scriptDebugOutput = ""
         errorMessage = ""
     }
 
@@ -334,6 +336,66 @@ final class QingLongClient: ObservableObject {
         }
     }
 
+    func uploadScript(filename: String, content: String) async {
+        do {
+            let payload = ScriptPayload(filename: filename, path: "", content: content)
+            let _: APIResponse<EmptyData> = try await request("scripts", method: "POST", body: payload, authorized: true)
+            errorMessage = "脚本已上传"
+            await loadScripts()
+        } catch {
+            await saveScript(filename: filename, path: "", content: content)
+        }
+    }
+
+    func renameScript(filename: String, newFilename: String, path: String = "") async {
+        do {
+            let payload = ScriptRenamePayload(filename: filename, path: path, newFilename: newFilename)
+            let _: APIResponse<EmptyData> = try await request("scripts/rename", method: "PUT", body: payload, authorized: true)
+            errorMessage = "脚本已改名"
+            await loadScripts()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteScript(filename: String, path: String = "") async {
+        do {
+            let payload = ScriptDeletePayload(filename: filename, path: path, type: "file")
+            let _: APIResponse<EmptyData> = try await request("scripts", method: "DELETE", body: payload, authorized: true)
+            errorMessage = "脚本已删除"
+            await loadScripts()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func downloadScript(filename: String, path: String = "") async -> String {
+        do {
+            let payload = ScriptDeletePayload(filename: filename, path: path, type: "file")
+            let text = try await requestString("scripts/download", method: "POST", body: payload, authorized: true)
+            if !text.isEmpty { return text }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        await loadScriptDetail(file: filename, path: path)
+        return scriptContent
+    }
+
+    func debugScript(filename: String, path: String = "") async {
+        isLoading = true
+        scriptDebugOutput = ""
+        defer { isLoading = false }
+        do {
+            await loadScriptDetail(file: filename, path: path)
+            let payload = ScriptPayload(filename: filename, path: path, content: scriptContent)
+            let output = try await requestString("scripts/run", method: "PUT", body: payload, authorized: true)
+            scriptDebugOutput = output.isEmpty ? "已发送调试运行，请稍后在日志中查看输出。" : output
+        } catch {
+            scriptDebugOutput = error.localizedDescription
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func runCron(_ cron: CronItem) async {
         await operate("crons/run", ids: [cron.id])
         await loadCrons()
@@ -414,6 +476,33 @@ final class QingLongClient: ObservableObject {
         if authorized {
             request.setValue(authHeader, forHTTPHeaderField: "Authorization")
         }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw QingLongError.message("No server response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw QingLongError.message("HTTP \(http.statusCode) \(text)")
+        }
+        if let decoded = try? JSONDecoder().decode(APIResponse<String>.self, from: data) {
+            guard decoded.code == nil || decoded.code == 200 else {
+                throw QingLongError.message(decoded.message ?? "Request failed")
+            }
+            return decoded.data ?? decoded.message ?? ""
+        }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func requestString<B: Encodable>(_ path: String, method: String, body: B, authorized: Bool) async throws -> String {
+        var request = URLRequest(url: endpoint(path))
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if authorized {
+            request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {

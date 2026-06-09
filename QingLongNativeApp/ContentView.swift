@@ -1,6 +1,29 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 private let qlAccentColor = Color(red: 1.0, green: 0.28, blue: 0.55)
+
+struct ScriptTextDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.plainText] }
+    var text: String
+
+    init(text: String = "") {
+        self.text = text
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        if let data = configuration.file.regularFileContents,
+           let string = String(data: data, encoding: .utf8) {
+            text = string
+        } else {
+            text = ""
+        }
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
 
 struct ContentView: View {
     @StateObject private var client = QingLongClient()
@@ -523,7 +546,14 @@ struct AccountManagerView: View {
 struct ScriptListView: View {
     @EnvironmentObject private var client: QingLongClient
     @State private var editing: TreeRow?
+    @State private var renaming: TreeRow?
+    @State private var renameName = ""
+    @State private var debugging: TreeRow?
     @State private var creating = false
+    @State private var importing = false
+    @State private var exporting = false
+    @State private var exportDocument = ScriptTextDocument()
+    @State private var exportName = "script.js"
 
     var body: some View {
         List(flattenScripts(client.scripts)) { row in
@@ -533,17 +563,143 @@ struct ScriptListView: View {
                     Text(row.name).padding(.leading, CGFloat(row.level * 14)).foregroundStyle(.primary)
                 }
             }
+            .swipeActions(edge: .leading) {
+                if !row.isDirectory {
+                    Button("调试") { debugging = row }.tint(.orange)
+                }
+            }
+            .swipeActions(edge: .trailing) {
+                if !row.isDirectory {
+                    Button("下载") { Task { await prepareDownload(row) } }.tint(qlAccentColor)
+                    Button("改名") {
+                        renameName = row.name
+                        renaming = row
+                    }
+                    .tint(.blue)
+                    Button("删除", role: .destructive) {
+                        Task { await client.deleteScript(filename: row.name) }
+                    }
+                }
+            }
         }
         .navigationTitle("脚本文件")
         .refreshable { await client.loadScripts() }
         .toolbar {
             refreshButton { await client.loadScripts() }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { creating = true } label: { Image(systemName: "plus") }
+                Menu {
+                    Button { creating = true } label: {
+                        Label("新建脚本", systemImage: "doc.badge.plus")
+                    }
+                    Button { importing = true } label: {
+                        Label("从本地上传", systemImage: "square.and.arrow.up")
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
             }
         }
         .sheet(item: $editing) { row in ScriptEditorView(filename: row.name, isNew: false).environmentObject(client) }
+        .sheet(item: $renaming) { row in
+            RenameScriptView(row: row, name: $renameName).environmentObject(client)
+        }
+        .sheet(item: $debugging) { row in
+            ScriptDebugView(row: row).environmentObject(client)
+        }
         .sheet(isPresented: $creating) { ScriptEditorView(filename: "", isNew: true).environmentObject(client) }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
+            importScript(result)
+        }
+        .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .plainText, defaultFilename: exportName) { result in
+            if case .failure(let error) = result {
+                client.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func importScript(_ result: Result<[URL], Error>) {
+        Task {
+            do {
+                guard let url = try result.get().first else { return }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer {
+                    if scoped { url.stopAccessingSecurityScopedResource() }
+                }
+                let data = try Data(contentsOf: url)
+                let content = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .unicode) ?? ""
+                await client.uploadScript(filename: url.lastPathComponent, content: content)
+            } catch {
+                client.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func prepareDownload(_ row: TreeRow) async {
+        let content = await client.downloadScript(filename: row.name)
+        exportName = row.name
+        exportDocument = ScriptTextDocument(text: content)
+        exporting = true
+    }
+}
+
+struct RenameScriptView: View {
+    @EnvironmentObject private var client: QingLongClient
+    @Environment(\.dismiss) private var dismiss
+    let row: TreeRow
+    @Binding var name: String
+
+    var body: some View {
+        editorShell(title: "脚本改名", cancel: { dismiss() }) {
+            Form {
+                TextField("文件名", text: $name)
+                    .textInputAutocapitalization(.never)
+                    .font(.system(.body, design: .monospaced))
+            }
+        } save: {
+            await client.renameScript(filename: row.name, newFilename: name)
+            dismiss()
+        }
+    }
+}
+
+struct ScriptDebugView: View {
+    @EnvironmentObject private var client: QingLongClient
+    @Environment(\.dismiss) private var dismiss
+    let row: TreeRow
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if client.isLoading && client.scriptDebugOutput.isEmpty {
+                    ProgressView("正在调试脚本")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        Text(client.scriptDebugOutput.isEmpty ? "暂无调试输出" : client.scriptDebugOutput)
+                            .font(.system(size: 13, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    .background(Color(.secondarySystemBackground))
+                }
+            }
+            .navigationTitle(row.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { Task { await client.debugScript(filename: row.name) } } label: {
+                        Image(systemName: "play.fill")
+                    }
+                }
+            }
+            .task {
+                await client.debugScript(filename: row.name)
+            }
+        }
     }
 }
 

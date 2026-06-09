@@ -140,6 +140,18 @@ struct ScriptPayload: Encodable {
     var content: String
 }
 
+struct ScriptDeletePayload: Encodable {
+    var filename: String
+    var path: String
+    var type: String?
+}
+
+struct ScriptRenamePayload: Encodable {
+    var filename: String
+    var path: String
+    var newFilename: String
+}
+
 struct LogNode: Identifiable, Codable {
     let title: String?
     let key: String?
