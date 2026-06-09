@@ -21,6 +21,7 @@ final class QingLongClient: ObservableObject {
     @Published var scriptContent = ""
     @Published var cronLogContent = ""
     @Published var scriptDebugOutput = ""
+    @Published var scriptDebugPID: Int?
     @Published var isLoading = false
     @Published var errorMessage = ""
 
@@ -176,6 +177,7 @@ final class QingLongClient: ObservableObject {
         scriptContent = ""
         cronLogContent = ""
         scriptDebugOutput = ""
+        scriptDebugPID = nil
         errorMessage = ""
     }
 
@@ -384,14 +386,27 @@ final class QingLongClient: ObservableObject {
     func debugScript(filename: String, path: String = "") async {
         isLoading = true
         scriptDebugOutput = ""
+        scriptDebugPID = nil
         defer { isLoading = false }
         do {
             let target = path.isEmpty ? filename : "\(path)/\(filename)"
             let payload = CommandRunPayload(command: "task \(shellEscaped(target)) now")
-            let output = try await requestString("system/command-run", method: "PUT", body: payload, authorized: true)
-            scriptDebugOutput = readableDebugOutput(output)
+            let result = try await requestCommand("system/command-run", method: "PUT", body: payload, authorized: true)
+            scriptDebugPID = result.pid
+            scriptDebugOutput = readableDebugOutput(result.output)
         } catch {
             scriptDebugOutput = error.localizedDescription
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func refreshScriptDebugLog() async {
+        do {
+            let text = try await requestString("system/log", method: "GET", query: ["t": "command"], authorized: true)
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                scriptDebugOutput = text
+            }
+        } catch {
             errorMessage = error.localizedDescription
         }
     }
@@ -544,6 +559,29 @@ final class QingLongClient: ObservableObject {
             return decoded.data ?? decoded.message ?? ""
         }
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func requestCommand<B: Encodable>(_ path: String, method: String, body: B, authorized: Bool) async throws -> CommandRunResult {
+        var request = URLRequest(url: endpoint(path))
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if authorized {
+            request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw QingLongError.message("No server response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw QingLongError.message("HTTP \(http.statusCode) \(text)")
+        }
+        let output = String(data: data, encoding: .utf8) ?? ""
+        let pid = http.value(forHTTPHeaderField: "QL-Task-Pid").flatMap(Int.init)
+        return CommandRunResult(output: output, pid: pid)
     }
 
     private func endpoint(_ path: String, query: [String: String] = [:]) -> URL {

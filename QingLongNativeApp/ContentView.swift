@@ -697,8 +697,17 @@ struct ScriptDebugView: View {
                 }
             }
             .task {
-                await client.debugScript(filename: row.name)
+                await autoRefreshDebugLog()
             }
+        }
+    }
+
+    private func autoRefreshDebugLog() async {
+        await client.debugScript(filename: row.name)
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if Task.isCancelled { break }
+            await client.refreshScriptDebugLog()
         }
     }
 }

@@ -156,6 +156,11 @@ struct CommandRunPayload: Encodable {
     var command: String
 }
 
+struct CommandRunResult {
+    var output: String
+    var pid: Int?
+}
+
 struct LogNode: Identifiable, Codable {
     let title: String?
     let key: String?
