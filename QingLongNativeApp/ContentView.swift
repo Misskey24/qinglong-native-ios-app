@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let qlAccentColor = Color(red: 1.0, green: 0.28, blue: 0.55)
+
 struct ContentView: View {
     @StateObject private var client = QingLongClient()
 
@@ -11,7 +13,7 @@ struct ContentView: View {
                 LoginView().environmentObject(client)
             }
         }
-        .tint(.green)
+        .tint(qlAccentColor)
     }
 }
 
@@ -52,7 +54,7 @@ struct LoginView: View {
                                         }
                                         Spacer()
                                         Image(systemName: "chevron.right")
-                                            .foregroundStyle(.green)
+                                            .foregroundStyle(qlAccentColor)
                                     }
                                     .padding(12)
                                     .background(Color(.secondarySystemBackground))
@@ -65,7 +67,7 @@ struct LoginView: View {
                 }
                 .padding(18)
             }
-            .background(LinearGradient(colors: [.white, Color.green.opacity(0.08)], startPoint: .top, endPoint: .bottom))
+            .background(LinearGradient(colors: [.white, qlAccentColor.opacity(0.08)], startPoint: .top, endPoint: .bottom))
             .navigationTitle("远程登录")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -97,14 +99,14 @@ struct LoginView: View {
 
             Text(baseURL.absoluteString + "/api")
                 .font(.footnote)
-                .foregroundStyle(.green)
+                .foregroundStyle(qlAccentColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-                .background(Color.green.opacity(0.12))
+                .background(qlAccentColor.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
 
-            if !client.errorMessage.isEmpty {
-                Text(client.errorMessage)
+            if let visibleError = client.visibleErrorMessage {
+                Text(visibleError)
                     .font(.footnote)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,8 +174,8 @@ struct DashboardView: View {
                         metric("依赖项目", "\(client.dependencies.count)")
                     }
 
-                    if !client.errorMessage.isEmpty {
-                        Text(client.errorMessage)
+                    if let visibleError = client.visibleErrorMessage {
+                        Text(visibleError)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .padding()
@@ -185,7 +187,6 @@ struct DashboardView: View {
                 .padding(18)
             }
             .navigationTitle("青龙")
-            .toolbar { refreshButton { await client.refreshAll() } }
         }
     }
 
@@ -196,7 +197,7 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(Color.green.opacity(0.12))
+        .background(qlAccentColor.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 }
@@ -231,23 +232,23 @@ struct CronListView: View {
                     } label: {
                         Text("运行")
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(qlAccentColor)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
-                            .background(Color.green.opacity(0.12))
+                            .background(qlAccentColor.opacity(0.12))
                             .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
                 }
                 .swipeActions(edge: .leading) {
-                    Button("运行") { Task { await client.runCron(cron) } }.tint(.green)
+                    Button("运行") { Task { await client.runCron(cron) } }.tint(qlAccentColor)
                     Button("停止") { Task { await client.stopCron(cron) } }.tint(.orange)
                 }
                 .swipeActions(edge: .trailing) {
                     Button(cron.isDisabled == 1 ? "启用" : "禁用") {
                         Task { await client.toggleCron(cron) }
                     }
-                    .tint(cron.isDisabled == 1 ? .green : .red)
+                    .tint(cron.isDisabled == 1 ? qlAccentColor : .red)
                 }
             }
             .overlay { if client.crons.isEmpty { EmptyStateView(title: "没有任务数据", subtitle: "下拉刷新或检查登录地址。", icon: "tray") } }
@@ -397,7 +398,7 @@ struct EnvListView: View {
                             Text(env.title).fontWeight(.semibold).foregroundStyle(.primary)
                             Spacer()
                             Image(systemName: env.enabled ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(env.enabled ? .green : .red)
+                                .foregroundStyle(env.enabled ? qlAccentColor : .red)
                         }
                         Text(env.subtitle).foregroundStyle(.secondary)
                     }
@@ -406,7 +407,7 @@ struct EnvListView: View {
                     Button(env.enabled ? "禁用" : "启用") {
                         Task { await client.toggleEnv(env) }
                     }
-                    .tint(env.enabled ? .red : .green)
+                    .tint(env.enabled ? .red : qlAccentColor)
                 }
             }
             .overlay { if client.envs.isEmpty { EmptyStateView(title: "没有环境变量", subtitle: "下拉刷新或检查权限。", icon: "tray") } }
@@ -452,7 +453,7 @@ struct MoreView: View {
                                     Spacer()
                                     if client.selectedAccountID == account.id {
                                         Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(.green)
+                                            .foregroundStyle(qlAccentColor)
                                     }
                                 }
                             }
@@ -461,7 +462,6 @@ struct MoreView: View {
                             }
                         }
                     }
-                    Button("刷新全部数据") { Task { await client.refreshAll() } }
                     Button("添加青龙面板") { client.beginAddingPanel() }
                     Button("退出当前面板", role: .destructive) { client.logoutCurrentAccount() }
                 }
@@ -497,7 +497,7 @@ struct AccountManagerView: View {
                                 HStack {
                                     Text(account.name).fontWeight(.semibold).foregroundStyle(.primary)
                                     if client.selectedAccountID == account.id {
-                                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                        Image(systemName: "checkmark.circle.fill").foregroundStyle(qlAccentColor)
                                     }
                                 }
                                 Text(account.baseURL.absoluteString).font(.caption).foregroundStyle(.secondary)
@@ -529,7 +529,7 @@ struct ScriptListView: View {
         List(flattenScripts(client.scripts)) { row in
             Button { if !row.isDirectory { editing = row } } label: {
                 HStack {
-                    Image(systemName: row.isDirectory ? "folder" : "doc.text").foregroundStyle(.green)
+                    Image(systemName: row.isDirectory ? "folder" : "doc.text").foregroundStyle(qlAccentColor)
                     Text(row.name).padding(.leading, CGFloat(row.level * 14)).foregroundStyle(.primary)
                 }
             }
@@ -559,12 +559,12 @@ struct DependencyListView: View {
                     HStack {
                         Text(item.title).fontWeight(.semibold).foregroundStyle(.primary)
                         Spacer()
-                        Text(item.statusText).font(.caption).foregroundStyle(.green)
+                        Text(item.statusText).font(.caption).foregroundStyle(qlAccentColor)
                     }
                     Text(item.subtitle).foregroundStyle(.secondary)
                 }
             }
-            .swipeActions { Button("重装") { Task { await client.reinstallDependency(item) } }.tint(.green) }
+            .swipeActions { Button("重装") { Task { await client.reinstallDependency(item) } }.tint(qlAccentColor) }
         }
         .navigationTitle("依赖管理")
         .refreshable { await client.loadDependencies() }
@@ -592,7 +592,7 @@ struct SubscriptionListView: View {
                     Text(item.subtitle).foregroundStyle(.secondary)
                 }
             }
-            .swipeActions { Button("运行") { Task { await client.runSubscription(item) } }.tint(.green) }
+            .swipeActions { Button("运行") { Task { await client.runSubscription(item) } }.tint(qlAccentColor) }
         }
         .navigationTitle("订阅管理")
         .refreshable { await client.loadSubscriptions() }
@@ -612,7 +612,7 @@ struct LogListView: View {
     var body: some View {
         List(flattenLogs(client.logs)) { row in
             HStack {
-                Image(systemName: row.isDirectory ? "folder" : "doc.text").foregroundStyle(.green)
+                Image(systemName: row.isDirectory ? "folder" : "doc.text").foregroundStyle(qlAccentColor)
                 Text(row.name).padding(.leading, CGFloat(row.level * 14))
             }
         }

@@ -24,6 +24,15 @@ final class QingLongClient: ObservableObject {
     @Published var errorMessage = ""
 
     var isLoggedIn: Bool { !token.isEmpty }
+    var visibleErrorMessage: String? {
+        let message = errorMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return nil }
+        let lowercased = message.lowercased()
+        if lowercased.contains("the data") || lowercased.contains("the date") || lowercased.contains("couldn't be read") || lowercased.contains("could not be read") {
+            return nil
+        }
+        return message
+    }
 
     init() {
         loadAccounts()
