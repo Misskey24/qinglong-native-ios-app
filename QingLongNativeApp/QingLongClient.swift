@@ -387,7 +387,7 @@ final class QingLongClient: ObservableObject {
         defer { isLoading = false }
         do {
             let target = path.isEmpty ? filename : "\(path)/\(filename)"
-            let payload = CommandRunPayload(command: "task \(shellQuoted(target)) now")
+            let payload = CommandRunPayload(command: "task \(shellEscaped(target)) now")
             let output = try await requestString("system/command-run", method: "PUT", body: payload, authorized: true)
             scriptDebugOutput = readableDebugOutput(output)
         } catch {
@@ -396,8 +396,11 @@ final class QingLongClient: ObservableObject {
         }
     }
 
-    private func shellQuoted(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    private func shellEscaped(_ value: String) -> String {
+        let special = CharacterSet(charactersIn: #" "'\`$&;()<>|*?[]{}!"#)
+        return value.unicodeScalars.map { scalar in
+            special.contains(scalar) ? "\\\(String(scalar))" : String(scalar)
+        }.joined()
     }
 
     private func readableDebugOutput(_ output: String) -> String {
