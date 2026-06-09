@@ -152,6 +152,10 @@ struct ScriptRenamePayload: Encodable {
     var newFilename: String
 }
 
+struct CommandRunPayload: Encodable {
+    var command: String
+}
+
 struct LogNode: Identifiable, Codable {
     let title: String?
     let key: String?

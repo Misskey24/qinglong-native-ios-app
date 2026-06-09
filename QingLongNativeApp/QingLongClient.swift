@@ -386,14 +386,36 @@ final class QingLongClient: ObservableObject {
         scriptDebugOutput = ""
         defer { isLoading = false }
         do {
-            await loadScriptDetail(file: filename, path: path)
-            let payload = ScriptPayload(filename: filename, path: path, content: scriptContent)
-            let output = try await requestString("scripts/run", method: "PUT", body: payload, authorized: true)
-            scriptDebugOutput = output.isEmpty ? "已发送调试运行，请稍后在日志中查看输出。" : output
+            let target = path.isEmpty ? filename : "\(path)/\(filename)"
+            let payload = CommandRunPayload(command: "task \(shellQuoted(target)) now")
+            let output = try await requestString("system/command-run", method: "PUT", body: payload, authorized: true)
+            scriptDebugOutput = readableDebugOutput(output)
         } catch {
             scriptDebugOutput = error.localizedDescription
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func shellQuoted(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+
+    private func readableDebugOutput(_ output: String) -> String {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "已触发调试运行，正在等待日志输出。"
+        }
+        if let data = trimmed.data(using: .utf8),
+           let response = try? JSONDecoder().decode(APIResponse<Int>.self, from: data),
+           response.code == 200 {
+            return "已触发调试运行，任务编号：\(response.data ?? 0)。如果这里没有实时输出，请稍后到日志查看。"
+        }
+        if let data = trimmed.data(using: .utf8),
+           let response = try? JSONDecoder().decode(APIResponse<String>.self, from: data),
+           response.code == 200 {
+            return response.data ?? response.message ?? "已触发调试运行。"
+        }
+        return trimmed
     }
 
     func runCron(_ cron: CronItem) async {
